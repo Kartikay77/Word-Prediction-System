@@ -1,185 +1,178 @@
-#include<iostream>
-#include<fstream>
-#include<vector>
-#include<string>
-#include<set>
-#include<algorithm>
-#include<string.h> 
-#include<iomanip> 
-using namespace std; 
-class Node
-{
-public: Node()
-{
-mContent = ' '; mMarker = false;.
-}
-~Node() {} char content()
-{
-return mContent;
-}
-void setContent(char c)
-{
-mContent = c;
-}
-bool wordMarker()
-{
-return mMarker;
-}
-void setWordMarker()
-{
-mMarker = true;
-}
-Node* findChild(char c);
-void appendChild(Node* child)
-{
-mChildren.push_back(child);
-}
-vector<Node*> children()
-{
-return mChildren;
-}
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <string>
+#include <algorithm>
+#include <cctype>
+#include <memory>
+
+class Node {
+public:
+    Node() : mContent(' '), mMarker(false) {}
+    explicit Node(char c) : mContent(c), mMarker(false) {}
+
+    char content() const { return mContent; }
+    void setContent(char c) { mContent = c; }
+
+    bool wordMarker() const { return mMarker; }
+    void setWordMarker() { mMarker = true; }
+
+    Node* findChild(char c) const {
+        for (auto* child : mChildren) {
+            if (child->content() == c) return child;
+        }
+        return nullptr;
+    }
+
+    void appendChild(Node* child) { mChildren.push_back(child); }
+    const std::vector<Node*>& children() const { return mChildren; }
+
 private:
-char mContent; bool mMarker;
-vector<Node*> mChildren;
+    char mContent;
+    bool mMarker;
+    std::vector<Node*> mChildren;
+    friend class Trie;
 };
-Node* Node::findChild(char c)
-{
-for ( int i = 0; i < mChildren.size(); i++ )
-{
-Node* tmp = mChildren.at(i); if ( tmp->content() == c )
-{
-return tmp;
-}
-}
-return NULL;
-}
-class Trie
-{
-public: Trie();
-~Trie();
-void addWord(string s); bool searchWord(string s);
-bool autoComplete(string s,vector<string>&);
-void parseTree(Node *current,char * s,vector<string>&,bool &loop); private:
-Node* root;
+
+class Trie {
+public:
+    Trie() : root(new Node()) {}
+    ~Trie() { deleteSubtree(root); }
+
+    void addWord(const std::string& s) {
+        Node* current = root;
+        if (s.empty()) {
+            current->setWordMarker();
+            return;
+        }
+        for (size_t i = 0; i < s.size(); ++i) {
+            Node* child = current->findChild(s[i]);
+            if (child) {
+                current = child;
+            } else {
+                Node* tmp = new Node(s[i]);
+                current->appendChild(tmp);
+                current = tmp;
+            }
+            if (i + 1 == s.size()) current->setWordMarker();
+        }
+    }
+
+    bool searchWord(const std::string& s) const {
+        const Node* current = root;
+        for (char ch : s) {
+            const Node* next = current->findChild(ch);
+            if (!next) return false;
+            current = next;
+        }
+        return current->wordMarker();
+    }
+
+    // Fill `res` with autocomplete suggestions (up to limit).
+    // Returns false if the prefix doesn't exist.
+    bool autoComplete(const std::string& prefix, std::vector<std::string>& res, size_t limit = 15) const {
+        const Node* current = root;
+        for (char ch : prefix) {
+            const Node* next = current->findChild(ch);
+            if (!next) return false;
+            current = next;
+        }
+        bool keepGoing = true;
+        dfsCollect(current, prefix, res, keepGoing, limit);
+        return true;
+    }
+
+private:
+    Node* root;
+
+    static void deleteSubtree(Node* n) {
+        if (!n) return;
+        for (auto* c : n->mChildren) deleteSubtree(c);
+        delete n;
+    }
+
+    static void dfsCollect(const Node* node, const std::string& built,
+                           std::vector<std::string>& out, bool& keepGoing, size_t limit) {
+        if (!keepGoing || !node) return;
+
+        if (node->wordMarker()) {
+            out.push_back(built);
+            if (out.size() >= limit) { keepGoing = false; return; }
+        }
+        for (auto* child : node->children()) {
+            if (!keepGoing) break;
+            dfsCollect(child, built + child->content(), out, keepGoing, limit);
+        }
+    }
 };
-Trie::Trie()
-{
-root = new Node();
+
+static bool loadDictionary(Trie& trie, const std::string& filename) {
+    std::ifstream words(filename);
+    if (!words) {
+        std::cout << "Dictionary file not open: " << filename << "\n";
+        return false;
+    }
+    std::string w;
+    while (words >> w) {
+        // normalize to lowercase
+        std::transform(w.begin(), w.end(), w.begin(),
+                       [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+        trie.addWord(w);
+    }
+    return true;
 }
-Trie::~Trie()
-{
-// Free memory
-}
-void Trie::addWord(string s)
-{
-Node* current = root; if ( s.length() == 0 )
-{
-current->setWordMarker();
-return;
-}
-for ( int i = 0; i < s.length(); i++ )
-{
-Node* child = current->findChild(s[i]); if ( child != NULL )
-{
-current = child;
-}
-else
-{
-Node* tmp = new Node(); tmp->setContent(s[i]); current->appendChild(tmp); current = tmp;
-}
-if ( i == s.length() - 1 )
-current->setWordMarker();
-}
-}
-bool Trie::searchWord(string s)
-{
-Node* current = root; while ( current != NULL )
-{
-for ( int i = 0; i < s.length(); i++ )
-{
-Node* tmp = current->findChild(s[i]); if ( tmp == NULL )
-return false; current = tmp;
-}
-if ( current->wordMarker() ) return true;
-else
-return false;
-}
-return false;
-}
-bool Trie::autoComplete(std::string s, std::vector<string> &res)
-{
-Node *current=root;
-for ( int i = 0; i < s.length(); i++ )
-{
-Node* tmp = current->findChild(s[i]); if ( tmp == NULL )
-return false; current = tmp;
-}
-char c[100]; strcpy(c,s.c_str()); bool loop=true;
-parseTree(current,c,res,loop);
-return true;
-}
-void Trie::parseTree(Node *current, char *s,std::vector<string> &res,bool& loop)
-{
-char k[100]= {0};
-char a[2]= {0}; if(loop)
-{
-if(current!=NULL)
-{
-if(current->wordMarker()==true)
-{
-res.push_back(s); if(res.size()>15) loop=false;
-}
-vector<Node *> child=current->children(); for(int i=0; i<child.size() && loop; i++)
-{
-strcpy(k,s); a[0]=child[i]->content(); a[1]='\0';
-strcat(k,a);
-if(loop) parseTree(child[i],k,res,loop);
-}
-}
-}
-}
-bool loadDictionary(Trie* trie,string filename)
-{
-ifstream words; ifstream input;
-words.open(filename.c_str());
-if(!words.is_open())
-{
-cout<<"Dictionary file Not Open"<<endl; return false;
-}
-while(!words.eof())
-{
-char s[100]; words >> s;
-trie->addWord(s);
-}
-return true;
-}
-int main()
-{
-system("color 1E"); Trie* trie = new Trie(); int mode;
-cout<<"Loading dictionary"<<endl; loadDictionary(trie,"wordlist.txt"); while(1)
-{
-cout<<endl<<endl;
-cout<<"Interactive mode,press "<<endl; cout<<"1: Auto Complete Feature"<<endl; cout<<"2: Quit"<<endl<<endl; cin>>mode;
-switch(mode)
-{
-case 1://Auto complete
-{
-string s; cin>>s;
-transform(s.begin(), s.end(), s.begin(), ::tolower); vector<string> autoCompleteList;
-trie->autoComplete(s,autoCompleteList);
-if(autoCompleteList.size()==0)
-{
-cout<<"No suggestions"<<endl;
-}
-else
-{
-cout<<"Autocomplete reply :"<<endl; for(int i=0; i<autoCompleteList.size(); i++)
-{
-cout<<"\t \t "<<autoCompleteList[i]<<endl;
-}
-}
-}
-continue; case 2: delete trie; return 0; default: continue;
-}
-}
+
+int main(int argc, char** argv) {
+    std::string dictPath = "wordlist.txt";
+    if (argc >= 2) dictPath = argv[1];
+
+    Trie trie;
+    std::cout << "Loading dictionary: " << dictPath << "\n";
+    if (!loadDictionary(trie, dictPath)) {
+        std::cout << "Exiting (could not load dictionary).\n";
+        return 1;
+    }
+
+    while (true) {
+        std::cout << "\nInteractive mode, press\n"
+                  << "1: Auto Complete Feature\n"
+                  << "2: Search Word\n"
+                  << "3: Quit\n\n";
+
+        int mode = 0;
+        if (!(std::cin >> mode)) break;
+
+        if (mode == 1) {
+            std::cout << "Enter prefix: ";
+            std::string s;
+            if (!(std::cin >> s)) break;
+            std::transform(s.begin(), s.end(), s.begin(),
+                           [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+
+            std::vector<std::string> suggestions;
+            if (!trie.autoComplete(s, suggestions)) {
+                std::cout << "No suggestions (prefix not found)\n";
+            } else if (suggestions.empty()) {
+                std::cout << "No suggestions\n";
+            } else {
+                std::cout << "Autocomplete reply:\n";
+                for (const auto& t : suggestions) {
+                    std::cout << "    " << t << "\n";
+                }
+            }
+        } else if (mode == 2) {
+            std::cout << "Enter word to search: ";
+            std::string s;
+            if (!(std::cin >> s)) break;
+            std::transform(s.begin(), s.end(), s.begin(),
+                           [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+            std::cout << (trie.searchWord(s) ? "Found\n" : "Not found\n");
+        } else if (mode == 3) {
+            break;
+        } else {
+            std::cout << "Unknown option.\n";
+        }
+    }
+
+    return 0;
 }
